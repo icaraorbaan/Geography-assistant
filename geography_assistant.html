@@ -1,0 +1,40 @@
+<!DOCTYPE html><html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Countries by Land Area</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  canvas { max-width: 100%; }
+  #search { margin-bottom: 20px; padding: 5px; width: 300px; }
+</style>
+</head>
+<body>
+<h1>Interactive World Countries by Land Area</h1>
+<input type="text" id="search" placeholder="Search country..." />
+<canvas id="countryChart"></canvas>
+<script>
+const countries = [
+  {name: 'Russia', area: 6601668},
+  {name: 'Canada', area: 3855103},
+  {name: 'United States', area: 3809742},
+  {name: 'China', area: 3705407},
+  {name: 'Brazil', area: 3287956},
+  {name: 'Australia', area: 2968203},
+  {name: 'India', area: 1269346},
+  {name: 'Argentina', area: 1073500},
+  {name: 'Kazakhstan', area: 1052088},
+  {name: 'Algeria', area: 919595},
+  /* Add all remaining countries here in descending order */
+  {name: 'Vatican City', area: 0.17}
+];const ctx = document.getElementById('countryChart').getContext('2d'); let chart;
+
+function renderChart(filteredCountries) { if(chart) chart.destroy(); chart = new Chart(ctx, { type: 'bar', data: { labels: filteredCountries.map(c => c.name), datasets: [{ label: 'Land Area (sq mi)', data: filteredCountries.map(c => c.area), backgroundColor: 'rgba(54, 162, 235, 0.6)' }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } }); }
+
+renderChart(countries);
+
+document.getElementById('search').addEventListener('input', (e) => { const query = e.target.value.toLowerCase(); const filtered = countries.filter(c => c.name.toLowerCase().includes(query)); renderChart(filtered); }); </script>
+
+</body>
+</html>
