@@ -30,12 +30,13 @@
   </div>
   <div id="tooltip"></div>
 
-  <script src="https://unpkg.com/three@0.150.1/build/three.min.js"></script>
-  <script src="https://unpkg.com/three-globe"></script>
-  <script src="https://unpkg.com/d3@7"></script>
-  <script src="https://unpkg.com/three/examples/js/controls/OrbitControls.js"></script>
+  <!-- ES Module Scripts -->
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.150.1/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.150.1/examples/jsm/controls/OrbitControls.js';
+    import ThreeGlobe from 'https://unpkg.com/three-globe@2.26.9/dist/three-globe.module.js';
 
-  <script>
+    // Sample Data
     const countries = [
       {name: 'Russia', lat: 61, lon: 105, area: 6601668, population: {total: 146000000, children: 20000000, adults: 100000000, seniors: 16000000}, biome: 'tundra'},
       {name: 'Canada', lat: 60, lon: -95, area: 3855103, population: {total: 39000000, children: 7000000, adults: 28000000, seniors: 4000000}, biome: 'forest'},
@@ -78,13 +79,15 @@
       .pointLabel(c => `${c.name}<br>Population: ${c.population ? c.population.total : 'N/A'}`);
     scene.add(globe);
 
+    // Lights
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
     directionalLight.position.set(100, 100, 100);
     scene.add(directionalLight);
 
+    // Camera & Controls
     camera.position.z = 400;
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.rotateSpeed = 0.1;
@@ -155,6 +158,13 @@
 
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+  </script>
+</body>
+</html>
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
