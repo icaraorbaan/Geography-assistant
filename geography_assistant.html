@@ -2,39 +2,59 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>World Countries by Land Area</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<title>Interactive 3D Globe with Topography, Biomes, and Population</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  canvas { max-width: 100%; }
-  #search { margin-bottom: 20px; padding: 5px; width: 300px; }
+  body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+  #controls { position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; }
+  #search { padding: 5px; width: 250px; }
+  #tooltip { position: absolute; background: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 5px; pointer-events: none; display: none; }
 </style>
 </head>
 <body>
-<h1>Interactive World Countries by Land Area</h1>
-<input type="text" id="search" placeholder="Search country..." />
-<canvas id="countryChart"></canvas>
+<div id="controls">
+  <input type="text" id="search" placeholder="Search country or city..." />
+  <select id="modeSelect">
+    <option value="area">Land Area (sq mi)</option>
+    <option value="populationTotal">Total Population</option>
+    <option value="ageBreakdown">Age Breakdown (0–14, 15–64, 65+)</option>
+    <option value="hotspots">Population Hotspots</option>
+    <option value="topography">Topography</option>
+    <option value="biome">Biome</option>
+  </select>
+</div>
+<div id="tooltip"></div>
+<script src="https://unpkg.com/three@0.150.1/build/three.min.js"></script>
+<script src="https://unpkg.com/three-globe"></script>
+<script src="https://unpkg.com/d3@7"></script>
+<script src="https://unpkg.com/three/examples/js/controls/OrbitControls.js"></script>
 <script>
 const countries = [
-  {name: 'Russia', area: 6601668},
-  {name: 'Canada', area: 3855103},
-  {name: 'United States', area: 3809742},
-  {name: 'China', area: 3705407},
-  {name: 'Brazil', area: 3287956},
-  {name: 'Australia', area: 2968203},
-  {name: 'India', area: 1269346},
-  {name: 'Argentina', area: 1073500},
-  {name: 'Kazakhstan', area: 1052088},
-  {name: 'Algeria', area: 919595},
-  /* Add all remaining countries here in descending order */
-  {name: 'Vatican City', area: 0.17}
-];const ctx = document.getElementById('countryChart').getContext('2d'); let chart;
+  {name: 'Russia', lat: 61, lon: 105, area: 6601668, population: {total: 146000000, male: 67600000, female: 78400000, children: 20000000, adults: 100000000, seniors: 16000000}} ,
+  {name: 'Canada', lat: 60, lon: -95, area: 3855103, population: {total: 39000000, male: 19100000, female: 19900000, children: 7000000, adults: 28000000, seniors: 4000000}},
+  {name: 'United States', lat: 38, lon: -97, area: 3796742, population: {total: 331000000, male: 162000000, female: 169000000, children: 60000000, adults: 230000000, seniors: 41000000}},
+  {name: 'China', lat: 35, lon: 104, area: 3705407, population: {total: 1412000000, male: 723000000, female: 689000000, children: 250000000, adults: 950000000, seniors: 210000000}},
+  {name: 'Brazil', lat: -10, lon: -55, area: 3287956, population: {total: 213000000, male: 104000000, female: 109000000, children: 45000000, adults: 150000000, seniors: 18000000}}
+];const hotspots = [ {name: 'Tokyo', country: 'Japan', lat: 35.68, lon: 139.76, population: 37400068}, {name: 'Delhi', country: 'India', lat: 28.61, lon: 77.21, population: 28514000}, {name: 'Shanghai', country: 'China', lat: 31.23, lon: 121.47, population: 25582000}, {name: 'São Paulo', country: 'Brazil', lat: -23.55, lon: -46.63, population: 21846507}, {name: 'New York City', country: 'United States', lat: 40.71, lon: -74.01, population: 18819000} ];
 
-function renderChart(filteredCountries) { if(chart) chart.destroy(); chart = new Chart(ctx, { type: 'bar', data: { labels: filteredCountries.map(c => c.name), datasets: [{ label: 'Land Area (sq mi)', data: filteredCountries.map(c => c.area), backgroundColor: 'rgba(54, 162, 235, 0.6)' }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } }); }
+const tooltip = document.getElementById('tooltip'); const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000); const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(renderer.domElement);
 
-renderChart(countries);
+const loader = new THREE.TextureLoader(); const topoTexture = loader.load('https://raw.githubusercontent.com/VirtualPlanetAtlas/earth-textures/main/topo.png'); const biomeTexture = loader.load('https://raw.githubusercontent.com/VirtualPlanetAtlas/earth-textures/main/biome.png');
 
-document.getElementById('search').addEventListener('input', (e) => { const query = e.target.value.toLowerCase(); const filtered = countries.filter(c => c.name.toLowerCase().includes(query)); renderChart(filtered); }); </script>
+const globeMesh = new THREE.Mesh( new THREE.SphereGeometry(100, 64, 64), new THREE.MeshPhongMaterial({ map: topoTexture, bumpMap: topoTexture, bumpScale: 1.5, specular: new THREE.Color('grey'), alphaMap: biomeTexture, transparent: true }) ); scene.add(globeMesh);
+
+const globe = new ThreeGlobe().globeImageUrl(null).pointsData(countries).pointLat('lat').pointLng('lon').pointAltitude(c => c.area / 1e6).pointColor(c => c.population ? 'red' : 'blue').pointLabel(c => ${c.name}<br>Land Area: ${c.area} sq mi<br>Population: ${c.population ? c.population.total : 'N/A'}); scene.add(globe);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.8)); const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6); directionalLight.position.set(100, 100, 100); scene.add(directionalLight);
+
+camera.position.z = 400; const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = 0.05; controls.rotateSpeed = 0.1; controls.minDistance = 200; controls.maxDistance = 1000;
+
+function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); } animate();
+
+const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2(); renderer.domElement.addEventListener('mousemove', event => { mouse.x = (event.clientX / window.innerWidth) * 2 - 1; mouse.y = - (event.clientY / window.innerHeight) * 2 + 1; raycaster.setFromCamera(mouse, camera); const intersects = raycaster.intersectObjects([...globe.pointsData().map(p => p.__threeObj).filter(Boolean)]); if(intersects.length > 0){ const obj = intersects[0].object.__data; tooltip.style.display = 'block'; tooltip.style.left = event.clientX + 10 + 'px'; tooltip.style.top = event.clientY + 10 + 'px'; if(obj.area){ tooltip.innerHTML = ${obj.name}<br>Land Area: ${obj.area} sq mi<br>Population: ${obj.population ? obj.population.total : 'N/A'}; } else { tooltip.innerHTML = ${obj.name}, ${obj.country}<br>Population: ${obj.population.toLocaleString()}; } } else { tooltip.style.display = 'none'; } });
+
+document.getElementById('modeSelect').addEventListener('change', e => { const mode = e.target.value; if(mode === 'hotspots'){ globe.pointsData(hotspots).pointAltitude(c => Math.log(c.population)/5).pointColor(c => rgba(255,0,0,${Math.min(c.population/40000000,1)})).pointLabel(c => ${c.name}, ${c.country}<br>Population: ${c.population.toLocaleString()}); } else if(mode === 'area'){ globe.pointsData(countries).pointAltitude(c => c.area / 1e6).pointColor(c => c.population ? 'red' : 'blue').pointLabel(c => ${c.name}<br>Land Area: ${c.area} sq mi<br>Population: ${c.population ? c.population.total : 'N/A'}); } else if(mode === 'populationTotal'){ globe.pointsData(countries).pointAltitude(c => c.population ? c.population.total / 1e6 : 0).pointColor(c => 'red').pointLabel(c => ${c.name}<br>Population: ${c.population ? c.population.total : 'N/A'}); } else if(mode === 'ageBreakdown'){ globe.pointsData(countries).pointAltitude(c => c.population ? (c.population.children + c.population.adults + c.population.seniors)/1e6 : 0).pointColor(c => 'orange').pointLabel(c => ${c.name}<br>Age 0–14: ${c.population ? c.population.children : 0}<br>Age 15–64: ${c.population ? c.population.adults : 0}<br>Age 65+: ${c.population ? c.population.seniors : 0}); } else if(mode === 'topography'){ globeMesh.visible = true; } else if(mode === 'biome'){ globeMesh.material.alphaMap = biomeTexture; globeMesh.material.transparent = true; } });
+
+document.getElementById('search').addEventListener('input', e => { const query = e.target.value.toLowerCase(); globe.pointColor(c => { const match = c.name.toLowerCase().includes(query) || (c.country && c.country.toLowerCase().includes(query)); return match ? 'yellow' : (c.population ? 'red' : 'blue'); }); }); </script>
 
 </body>
 </html>
