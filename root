@@ -1,0 +1,200 @@
+<div id="interactive-globe-container" style="width: 100%; height: 600px; position: relative;"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r146/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.146/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+(function(){
+  const container = document.getElementById('interactive-globe-container');
+  const canvas = document.createElement('canvas');
+  container.appendChild(canvas);
+
+  // Tooltip
+  const tooltip = document.createElement('div');
+  tooltip.style.position = 'absolute';
+  tooltip.style.background = 'rgba(0,0,0,0.7)';
+  tooltip.style.color = '#fff';
+  tooltip.style.padding = '4px 8px';
+  tooltip.style.borderRadius = '4px';
+  tooltip.style.pointerEvents = 'none';
+  tooltip.style.fontFamily = 'sans-serif';
+  tooltip.style.fontSize = '12px';
+  tooltip.style.display = 'none';
+  container.appendChild(tooltip);
+
+  // Variables
+  let scene, renderer, globeElement, data;
+  const groups = { main: null, globe: null, globeDots: null };
+  const props = { mapSize:{width:1024,height:512}, position:{x:350,y:350}, globeRadius:200, colours:{globeDots:'#000'} };
+  const camera = { object:null, controls:null, angles:{ current:{azimuthal:null, polar:null}, target:{azimuthal:null, polar:null} } };
+  const animations = { finishedIntro:false, dots:{current:0,total:170,points:[]}, globe:{current:0,total:80} };
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  // Fetch data and setup
+  fetch('https://s3-us-west-2.amazonaws.com/s.cdpn.io/617753/globe-points.json')
+    .then(res => res.json())
+    .then(json => { data = json; setupScene(); })
+    .catch(()=>alert('Unable to get data'));
+
+  function setupScene(){
+    scene = new THREE.Scene();
+    renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(1);
+    renderer.setClearColor(0x000000,0);
+
+    groups.main = new THREE.Group();
+    scene.add(groups.main);
+
+    addCamera();
+    addControls();
+    addGlobe();
+
+    const { azimuthal, polar } = returnCameraAngles(props.position.x, props.position.y);
+    camera.angles.target.azimuthal = azimuthal;
+    camera.angles.target.polar = polar;
+
+    animate();
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+  }
+
+  function resizeCanvas(){
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    renderer.setSize(w,h);
+    if(camera.object){ camera.object.aspect=w/h; camera.object.updateProjectionMatrix(); }
+  }
+
+  function addCamera(){
+    camera.object = new THREE.PerspectiveCamera(60, container.clientWidth/container.clientHeight, 1, 10000);
+    camera.object.position.z = props.globeRadius*2.2;
+  }
+
+  function addControls(){
+    camera.controls = new OrbitControls(camera.object,canvas);
+    camera.controls.enableKeys=false; camera.controls.enablePan=false;
+    camera.controls.enableZoom=false; camera.controls.enableDamping=false;
+    camera.controls.enableRotate=false;
+    camera.angles.current.azimuthal=-Math.PI; camera.angles.current.polar=0;
+  }
+
+  function animate(){
+    requestAnimationFrame(animate);
+    if(groups.globeDots) introAnimate();
+    if(groups.globe) groups.globe.rotation.y+=0.001;
+
+    // Tooltip
+    raycaster.setFromCamera(mouse,camera.object);
+    const intersects = groups.globeDots ? raycaster.intersectObject(groups.globeDots) : [];
+    if(intersects.length>0){
+      const idx = intersects[0].index;
+      const point = data.points[idx];
+      tooltip.style.left = (mouse.screenX || 0) + 10 + 'px';
+      tooltip.style.top = (mouse.screenY || 0) + 10 + 'px';
+      tooltip.innerHTML = `<strong>${point.countryName}</strong><br>Population: ${point.population.toLocaleString()}<br>Lat: ${point.x.toFixed(2)}, Lon: ${point.y.toFixed(2)}`;
+      tooltip.style.display='block';
+    } else tooltip.style.display='none';
+
+    camera.controls.update();
+    renderer.render(scene, camera.object);
+  }
+
+  canvas.addEventListener('mousemove', e=>{
+    const rect=canvas.getBoundingClientRect();
+    mouse.x = ((e.clientX-rect.left)/rect.width)*2-1;
+    mouse.y = -((e.clientY-rect.top)/rect.height)*2+1;
+    mouse.screenX = e.clientX; mouse.screenY = e.clientY;
+  });
+
+  canvas.addEventListener('click', e=>{
+    const rect=canvas.getBoundingClientRect();
+    mouse.x = ((e.clientX-rect.left)/rect.width)*2-1;
+    mouse.y = -((e.clientY-rect.top)/rect.height)*2+1;
+    raycaster.setFromCamera(mouse,camera.object);
+    const intersects = groups.globeDots ? raycaster.intersectObject(groups.globeDots) : [];
+    if(intersects.length>0){
+      const idx = intersects[0].index;
+      const point = data.points[idx];
+      const { azimuthal, polar } = returnCameraAngles(point.x, point.y);
+      const duration=1000;
+      const startAz=camera.angles.current.azimuthal;
+      const startPolar=camera.angles.current.polar;
+      const deltaAz=azimuthal-startAz;
+      const deltaPolar=polar-startPolar;
+      const startTime=performance.now();
+      const animateCamera=(now)=>{
+        const elapsed = now-startTime;
+        const t=Math.min(elapsed/duration,1);
+        const ease = t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+        camera.controls.setAzimuthalAngle(startAz+deltaAz*ease);
+        camera.controls.setPolarAngle(startPolar+deltaPolar*ease);
+        if(t<1) requestAnimationFrame(animateCamera);
+        else { camera.angles.current.azimuthal=azimuthal; camera.angles.current.polar=polar; }
+      };
+      requestAnimationFrame(animateCamera);
+    }
+  });
+
+  function addGlobe(){
+    const radius=props.globeRadius*0.98;
+    const geometry = new THREE.SphereGeometry(radius,64,64);
+    const canvasTex = document.createElement('canvas');
+    canvasTex.width=128; canvasTex.height=128;
+    const ctx = canvasTex.getContext('2d'); ctx.fillStyle='#f0f0f0'; ctx.fillRect(0,0,128,128);
+    const texture = new THREE.Texture(canvasTex); texture.needsUpdate=true;
+    globeElement = new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({map:texture,transparent:true,opacity:1}));
+    groups.globe = new THREE.Group(); groups.globe.add(globeElement); scene.add(groups.globe);
+    addGlobeDots();
+  }
+
+  function addGlobeDots(){
+    const positions=new Float32Array(data.points.length*3);
+    for(let i=0;i<data.points.length;i++){
+      const {x,y} = data.points[i];
+      const result = returnSphericalCoordinates(x,y);
+      positions[i*3]=0; positions[i*3+1]=0; positions[i*3+2]=0;
+      animations.dots.points.push(new THREE.Vector3(result.x,result.y,result.z));
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
+    const dotCanvas=document.createElement('canvas'); dotCanvas.width=16; dotCanvas.height=16;
+    const dctx=dotCanvas.getContext('2d'); dctx.beginPath(); dctx.arc(8,8,8,0,Math.PI*2); dctx.fillStyle=props.colours.globeDots; dctx.fill();
+    const texture = new THREE.Texture(dotCanvas); texture.needsUpdate=true;
+    const material = new THREE.PointsMaterial({map:texture,size:props.globeRadius/120,transparent:true});
+    groups.globeDots = new THREE.Points(geometry,material); groups.globe.add(groups.globeDots);
+  }
+
+  function introAnimate(){
+    const {dots} = animations;
+    if(dots.current <= dots.total){
+      const positions = groups.globeDots.geometry.attributes.position.array;
+      for(let i=0;i<dots.points.length;i++){
+        let dp = dots.points[i];
+        let progress = Math.min(1, (dots.current/dots.total) + ((dots.current/dots.total)*(i/dots.points.length)));
+        positions[i*3]=dp.x*progress; positions[i*3+1]=dp.y*progress; positions[i*3+2]=dp.z*progress;
+      }
+      groups.globeDots.geometry.attributes.position.needsUpdate=true;
+      dots.current++;
+    } else if(!animations.finishedIntro){ animations.finishedIntro=true; }
+  }
+
+  function returnSphericalCoordinates(lat,long){
+    lat=((lat-props.mapSize.height)/props.mapSize.height)*180;
+    long=((long-props.mapSize.width)/props.mapSize.width)*360-180;
+    const latRad = THREE.MathUtils.degToRad(lat);
+    const lonRad = THREE.MathUtils.degToRad(long);
+    const r = props.globeRadius;
+    return {x:r*Math.cos(latRad)*Math.sin(lonRad), y:r*Math.sin(latRad), z:r*Math.cos(latRad)*Math.cos(lonRad)};
+  }
+
+  function returnCameraAngles(lat,long){
+    lat=((lat-props.mapSize.height)/props.mapSize.height)*180;
+    long=((long-props.mapSize.width)/props.mapSize.width)*360-180;
+    const latRad = THREE.MathUtils.degToRad(lat);
+    const lonRad = THREE.MathUtils.degToRad(long);
+    return { azimuthal: lonRad-Math.PI/2, polar: Math.PI/2-latRad };
+  }
+})();
+</script>
